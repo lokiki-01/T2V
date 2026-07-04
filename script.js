@@ -332,7 +332,7 @@ function balancedBrightness(value) {
 function buildResult(parsed, evidence) {
   const score = weightedScore(state.scores);
   const labels = diagnosticLabels(state.scores, evidence);
-  const result = {
+  return {
     videoId: $("#video-id").value.trim() || `V${String(state.cases.length + 1).padStart(3, "0")}`,
     model: $("#model-name").value.trim() || "Unknown",
     category: $("#category").value,
@@ -346,8 +346,6 @@ function buildResult(parsed, evidence) {
     reason: makeReason(score, labels, parsed, evidence),
     createdAt: new Date().toLocaleString()
   };
-  result.strictJson = buildStrictJson(result);
-  return result;
 }
 
 function weightedScore(scores) {
@@ -369,64 +367,17 @@ function makeReason(score, labels, parsed, evidence) {
   return `${promptInfo}${videoInfo}综合分 ${score}。${issueInfo}`;
 }
 
-function buildStrictJson(result) {
-  return {
-    video_id: result.videoId,
-    model: result.model,
-    category: result.category,
-    subject_score: roundScore(result.scores.subject),
-    attribute_score: roundScore(result.scores.attribute),
-    action_score: roundScore(result.scores.action),
-    relation_score: roundScore(result.scores.relation),
-    scene_score: roundScore(result.scores.scene),
-    temporal_score: roundScore(result.scores.temporal),
-    final_score: roundScore(result.normalizedScore),
-    error_type: result.labels,
-    reason: result.reason
-  };
-}
-
-function renderPromptParsing(result) {
-  const textElements = [
+function renderResult(result) {
+  $("#total-score").textContent = result.normalizedScore.toFixed(1);
+  $("#score-note").textContent = result.normalizedScore >= 85 ? "High semantic consistency" : result.normalizedScore >= 70 ? "Needs human review" : "Low consistency risk";
+  $("#diagnostic-labels").innerHTML = result.labels.map((label) => `<span class="chip ${label === "No Obvious Error" ? "" : "warn"}">${label}</span>`).join("");
+  $("#prompt-parse").innerHTML = [
     `主体：${displayList(result.parsed.objects)}`,
     `属性：${displayList(result.parsed.colors)}`,
     `动作：${displayList(result.parsed.actions)}`,
     `关系：${displayList(result.parsed.relations)}`,
-    `场景：${displayList(result.parsed.scenes)}`,
-    `时序变化：${result.parsed.actions.length || result.parsed.relations.length ? "需要结合关键帧连续性判断" : "未识别明显时序线索"}`
+    `场景：${displayList(result.parsed.scenes)}`
   ].join("<br>");
-
-  const expertPrompt = [
-    "你是AIGC视频语义一致性评价专家。请根据文本提示词和视频关键帧网格图，评价视频与文本提示词之间的语义一致性。",
-    "请先提取文本提示词中的语义要素：主体、属性、动作、关系、场景、时序变化。",
-    "请再根据视频关键帧判断实际生成内容：视频中出现的主体、属性、动作、关系、场景、时序变化。",
-    "请逐项比较文本语义与视频内容。",
-    "评分标准：5分表示完全一致；4分表示基本一致，仅有轻微偏差；3分表示部分一致但存在明显缺失或错误；2分表示只有少量相关内容；1分表示基本不一致；0分表示完全不相关或无法判断。",
-    "请严格输出 JSON。"
-  ].join("\n");
-
-  return `
-    <div class="parse-section">
-      <span>评价提示词</span>
-      <p>${expertPrompt}</p>
-    </div>
-    <div class="parse-section">
-      <span>文本语义要素</span>
-      <p>${textElements}</p>
-    </div>
-    <div class="parse-section">
-      <span>严格 JSON 输出</span>
-      <pre>${escapeHTML(JSON.stringify(result.strictJson, null, 2))}</pre>
-    </div>
-  `;
-}
-
-function renderResult(result) {
-  result.strictJson = buildStrictJson(result);
-  $("#total-score").textContent = result.normalizedScore.toFixed(1);
-  $("#score-note").textContent = result.normalizedScore >= 85 ? "High semantic consistency" : result.normalizedScore >= 70 ? "Needs human review" : "Low consistency risk";
-  $("#diagnostic-labels").innerHTML = result.labels.map((label) => `<span class="chip ${label === "No Obvious Error" ? "" : "warn"}">${label}</span>`).join("");
-  $("#prompt-parse").innerHTML = renderPromptParsing(result);
   renderBars();
   drawRadar(state.scores);
 }
@@ -449,7 +400,6 @@ function renderRubric() {
         state.current.normalizedScore = weightedScore(state.scores);
         state.current.labels = diagnosticLabels(state.scores, state.current.evidence);
         state.current.reason = makeReason(state.current.normalizedScore, state.current.labels, state.current.parsed, state.current.evidence);
-        state.current.strictJson = buildStrictJson(state.current);
         renderResult(state.current);
         renderCaseTable();
         updateStats();
@@ -824,10 +774,6 @@ function formatTime(seconds) {
 
 function csvCell(value) {
   return `"${String(value).replaceAll('"', '""')}"`;
-}
-
-function roundScore(value) {
-  return Math.round(value * 10) / 10;
 }
 
 function escapeHTML(value) {
