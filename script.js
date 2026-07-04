@@ -20,6 +20,7 @@ const state = {
   current: null,
   selectedCaseId: null,
   cases: [],
+  batchItems: [],
   keyframes: [],
   scores: Object.fromEntries(dimensions.map((d) => [d.key, 3.5]))
 };
@@ -41,6 +42,8 @@ function init() {
   drawRadar(state.scores);
   bindEvents();
   renderCaseTable();
+  renderBatchTable();
+  loadPublishedDataset();
   updateStats();
 }
 
@@ -54,6 +57,15 @@ function bindEvents() {
   $("#case-detail").addEventListener("click", handleCaseDetailAction);
   $("#export-json").addEventListener("click", exportJSON);
   $("#export-csv").addEventListener("click", exportCSV);
+  $("#batch-video-input").addEventListener("change", handleBatchInput);
+  $("#batch-model-a").addEventListener("input", refreshBatchModels);
+  $("#batch-model-b").addEventListener("input", refreshBatchModels);
+  $("#batch-category").addEventListener("change", refreshBatchDefaults);
+  $("#batch-prompt").addEventListener("input", refreshBatchDefaults);
+  $("#batch-table").addEventListener("input", handleBatchEdit);
+  $("#run-batch").addEventListener("click", runBatchEvaluation);
+  $("#load-public-dataset").addEventListener("click", loadPublishedDataset);
+  $("#export-public-dataset").addEventListener("click", exportPublishedDataset);
 }
 
 function handleVideoInput(event) {
@@ -120,8 +132,236 @@ async function handleEvaluation(event) {
   state.cases.unshift(result);
   renderResult(result);
   renderCaseTable();
+  renderComparison();
   updateStats();
   location.hash = "#results";
+}
+
+function handleBatchInput(event) {
+  const files = [...event.target.files].filter((file) => file.type.startsWith("video/"));
+  const modelA = $("#batch-model-a").value.trim() || "Model A";
+  const modelB = $("#batch-model-b").value.trim() || "Model B";
+  const defaultPrompt = $("#batch-prompt").value.trim();
+  const defaultCategory = $("#batch-category").value;
+  const splitIndex = Math.ceil(files.length / 2);
+
+  state.batchItems.forEach((item) => {
+    if (item.objectUrl) URL.revokeObjectURL(item.objectUrl);
+  });
+
+  state.batchItems = files.map((file, index) => {
+    const videoId = `V${String(index + 1).padStart(3, "0")}`;
+    const model = index < splitIndex ? modelA : modelB;
+    return {
+      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${index}`,
+      videoId,
+      file,
+      objectUrl: URL.createObjectURL(file),
+      model,
+      category: defaultCategory,
+      prompt: defaultPrompt || inferPromptFromFilename(file.name),
+      status: "pending",
+      score: null,
+      result: null
+    };
+  });
+
+  renderBatchTable();
+  renderComparison();
+}
+
+function refreshBatchModels() {
+  const modelA = $("#batch-model-a").value.trim() || "Model A";
+  const modelB = $("#batch-model-b").value.trim() || "Model B";
+  const splitIndex = Math.ceil(state.batchItems.length / 2);
+  state.batchItems.forEach((item, index) => {
+    if (!item.result) item.model = index < splitIndex ? modelA : modelB;
+  });
+  renderBatchTable();
+}
+
+function refreshBatchDefaults() {
+  const defaultPrompt = $("#batch-prompt").value.trim();
+  const defaultCategory = $("#batch-category").value;
+  state.batchItems.forEach((item) => {
+    if (!item.result) {
+      if (defaultPrompt) item.prompt = defaultPrompt;
+      item.category = defaultCategory;
+    }
+  });
+  renderBatchTable();
+}
+
+function handleBatchEdit(event) {
+  const target = event.target;
+  const row = target.closest("[data-batch-id]");
+  if (!row) return;
+  const item = state.batchItems.find((entry) => entry.id === row.dataset.batchId);
+  if (!item) return;
+  item[target.dataset.field] = target.value;
+}
+
+async function runBatchEvaluation() {
+  if (!state.batchItems.length) {
+    alert("请先一次上传 30 条视频，或点击 Load Published Dataset 读取公开数据。");
+    return;
+  }
+
+  for (const item of state.batchItems) {
+    if (item.result) continue;
+    item.status = "running";
+    renderBatchTable();
+    try {
+      const result = await evaluateBatchItem(item);
+      item.status = "done";
+      item.score = result.normalizedScore;
+      item.result = result;
+      upsertCase(result);
+      state.current = result;
+      state.selectedCaseId = result.videoId;
+      state.scores = { ...result.scores };
+      renderResult(result);
+      renderCaseTable();
+      updateStats();
+      renderComparison();
+    } catch (error) {
+      item.status = "error";
+      item.error = error.message;
+      console.warn(error);
+    }
+    renderBatchTable();
+  }
+
+  renderComparison();
+  location.hash = "#batch";
+}
+
+async function evaluateBatchItem(item) {
+  const video = document.createElement("video");
+  video.src = item.objectUrl || item.videoSrc;
+  video.muted = true;
+  video.playsInline = true;
+  await waitForVideoMetadata(video);
+
+  const previousKeyframes = state.keyframes;
+  state.keyframes = await extractKeyframes(video, 8);
+  const evidence = await analyzeDetachedVideo(video);
+  evidence.keyframes = state.keyframes;
+
+  const parsed = parsePrompt(item.prompt);
+  const scores = estimateScores(parsed, evidence);
+  const result = buildResultFromData({
+    videoId: item.videoId,
+    model: item.model,
+    category: item.category,
+    evaluator: "Batch",
+    prompt: item.prompt,
+    parsed,
+    evidence,
+    scores,
+    videoSrc: item.objectUrl || item.videoSrc,
+    fileName: item.file?.name || item.fileName || ""
+  });
+  state.keyframes = previousKeyframes;
+  return result;
+}
+
+function waitForVideoMetadata(video) {
+  return new Promise((resolve, reject) => {
+    if (video.readyState >= 1) {
+      resolve();
+      return;
+    }
+    video.onloadedmetadata = () => resolve();
+    video.onerror = () => reject(new Error("视频元数据读取失败"));
+  });
+}
+
+async function analyzeDetachedVideo(video) {
+  const canvas = $("#analysis-canvas");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const duration = Math.max(video.duration || 1, 1);
+  const points = uniformTimes(duration, 8);
+  const frames = [];
+
+  for (const time of points) {
+    await seekVideo(video, time);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    frames.push(frameStats(ctx.getImageData(0, 0, canvas.width, canvas.height)));
+  }
+
+  return {
+    samples: frames.length,
+    duration: video.duration || 0,
+    resolution: `${video.videoWidth}×${video.videoHeight}`,
+    keyframes: state.keyframes,
+    brightness: average(frames.map((frame) => frame.brightness)),
+    contrast: average(frames.map((frame) => frame.contrast)),
+    sharpness: average(frames.map((frame) => frame.sharpness)),
+    motion: average(frames.slice(1).map((frame, index) => frameDiff(frames[index].gray, frame.gray))),
+    colorfulness: average(frames.map((frame) => frame.colorfulness))
+  };
+}
+
+function renderBatchTable() {
+  $("#batch-count").textContent = `${state.batchItems.length} videos`;
+  if (!state.batchItems.length) {
+    $("#batch-table").innerHTML = `<tr><td colspan="7" class="empty-row">还没有批量视频。请选择 30 条视频开始。</td></tr>`;
+    return;
+  }
+
+  $("#batch-table").innerHTML = state.batchItems.map((item) => `
+    <tr data-batch-id="${escapeHTML(item.id)}">
+      <td><input data-field="videoId" value="${escapeHTML(item.videoId)}"></td>
+      <td class="batch-preview">${item.objectUrl || item.videoSrc ? `<video src="${item.objectUrl || item.videoSrc}" muted controls></video>` : "--"}</td>
+      <td><input data-field="model" value="${escapeHTML(item.model)}"></td>
+      <td>
+        <select data-field="category">
+          ${categoryOptions(item.category)}
+        </select>
+      </td>
+      <td><textarea data-field="prompt">${escapeHTML(item.prompt)}</textarea></td>
+      <td><span class="status-pill ${statusClass(item.status)}">${statusLabel(item)}</span></td>
+      <td>${item.score == null ? "--" : item.score.toFixed(1)}</td>
+    </tr>
+  `).join("");
+}
+
+function renderComparison() {
+  const groups = groupByModel(state.cases);
+  const modelNames = Object.keys(groups);
+  const modelA = $("#batch-model-a").value.trim() || modelNames[0] || "Model A";
+  const modelB = $("#batch-model-b").value.trim() || modelNames.find((name) => name !== modelA) || "Model B";
+  const avgA = average((groups[modelA] || []).map((item) => item.normalizedScore));
+  const avgB = average((groups[modelB] || []).map((item) => item.normalizedScore));
+  const winner = avgA || avgB ? (avgA === avgB ? "Tie" : avgA > avgB ? modelA : modelB) : "--";
+
+  $("#comparison-summary").innerHTML = `
+    <article><span>${escapeHTML(modelA)} Avg</span><strong>${avgA ? avgA.toFixed(1) : "--"}</strong></article>
+    <article><span>${escapeHTML(modelB)} Avg</span><strong>${avgB ? avgB.toFixed(1) : "--"}</strong></article>
+    <article><span>Winner</span><strong>${escapeHTML(winner)}</strong></article>
+  `;
+
+  const prompts = [...new Set(state.cases.map((item) => item.prompt))].slice(0, 30);
+  $("#comparison-bars").innerHTML = prompts.length ? prompts.map((prompt, index) => {
+    const a = (groups[modelA] || []).find((item) => item.prompt === prompt)?.normalizedScore || 0;
+    const b = (groups[modelB] || []).find((item) => item.prompt === prompt)?.normalizedScore || 0;
+    return `
+      <div class="comparison-row">
+        <header><span>Sample ${String(index + 1).padStart(2, "0")}</span><span>${escapeHTML(prompt.slice(0, 72))}</span></header>
+        <div class="dual-bars">
+          <div class="dual-bar"><span>${escapeHTML(modelA)}</span><i><em style="width:${a}%"></em></i><b>${a ? a.toFixed(1) : "--"}</b></div>
+          <div class="dual-bar model-b"><span>${escapeHTML(modelB)}</span><i><em style="width:${b}%"></em></i><b>${b ? b.toFixed(1) : "--"}</b></div>
+        </div>
+      </div>
+    `;
+  }).join("") : `<div class="empty-detail">批量评测完成后，这里会显示两个模型的逐视频对比。</div>`;
+}
+
+function upsertCase(result) {
+  const index = state.cases.findIndex((item) => item.videoId === result.videoId && item.model === result.model);
+  if (index >= 0) state.cases[index] = result;
+  else state.cases.unshift(result);
 }
 
 function parsePrompt(prompt) {
@@ -253,6 +493,44 @@ function renderKeyframes(frames, target = "#keyframe-grid") {
   `).join("") : `<div class="empty-keyframes">暂无关键帧</div>`;
 }
 
+function categoryOptions(selected) {
+  return ["主体", "属性", "动作", "关系", "场景", "时序"].map((category) => (
+    `<option ${category === selected ? "selected" : ""}>${category}</option>`
+  )).join("");
+}
+
+function statusClass(status) {
+  return {
+    done: "done",
+    running: "running",
+    error: "error"
+  }[status] || "";
+}
+
+function statusLabel(item) {
+  if (item.status === "done") return "Done";
+  if (item.status === "running") return "Running";
+  if (item.status === "error") return item.error || "Error";
+  return "Pending";
+}
+
+function inferPromptFromFilename(name) {
+  return name
+    .replace(/\.[^.]+$/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b(model|pika|kling|sora|runway|video|sample|v\d+)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function groupByModel(items) {
+  return items.reduce((groups, item) => {
+    groups[item.model] ||= [];
+    groups[item.model].push(item);
+    return groups;
+  }, {});
+}
+
 function frameStats(imageData) {
   const data = imageData.data;
   const gray = new Float32Array(data.length / 4);
@@ -332,19 +610,42 @@ function balancedBrightness(value) {
 function buildResult(parsed, evidence) {
   const score = weightedScore(state.scores);
   const labels = diagnosticLabels(state.scores, evidence);
-  return {
+  return buildResultFromData({
     videoId: $("#video-id").value.trim() || `V${String(state.cases.length + 1).padStart(3, "0")}`,
     model: $("#model-name").value.trim() || "Unknown",
     category: $("#category").value,
     evaluator: $("#evaluator").value.trim() || "Guest",
     prompt: parsed.raw,
+    parsed,
+    evidence,
     scores: { ...state.scores },
+    labels,
     normalizedScore: score,
+    videoSrc: $("#video-preview").src,
+    createdAt: new Date().toLocaleString()
+  });
+}
+
+function buildResultFromData(data) {
+  const normalizedScore = data.normalizedScore ?? weightedScore(data.scores);
+  const labels = data.labels ?? diagnosticLabels(data.scores, data.evidence);
+  const parsed = data.parsed ?? parsePrompt(data.prompt || "");
+  const evidence = data.evidence ?? demoEvidence();
+  return {
+    videoId: data.videoId,
+    model: data.model || "Unknown",
+    category: data.category || "主体",
+    evaluator: data.evaluator || "Guest",
+    prompt: data.prompt || "",
+    scores: { ...data.scores },
+    normalizedScore,
     labels,
     parsed,
     evidence,
-    reason: makeReason(score, labels, parsed, evidence),
-    createdAt: new Date().toLocaleString()
+    videoSrc: data.videoSrc || "",
+    fileName: data.fileName || "",
+    reason: data.reason || makeReason(normalizedScore, labels, parsed, evidence),
+    createdAt: data.createdAt || new Date().toLocaleString()
   };
 }
 
@@ -402,6 +703,7 @@ function renderRubric() {
         state.current.reason = makeReason(state.current.normalizedScore, state.current.labels, state.current.parsed, state.current.evidence);
         renderResult(state.current);
         renderCaseTable();
+        renderComparison();
         updateStats();
       } else {
         renderBars();
@@ -529,6 +831,11 @@ function renderCaseDetail(item) {
       <span>Prompt</span>
       <p>${escapeHTML(item.prompt)}</p>
     </div>
+    ${item.videoSrc ? `
+      <div class="detail-video">
+        <video src="${item.videoSrc}" controls playsinline></video>
+      </div>
+    ` : ""}
     <div class="detail-split">
       <div>
         <h3>Dimension Score</h3>
@@ -572,6 +879,72 @@ function renderCaseDetail(item) {
       <button class="ghost-button" type="button" data-action="apply-scores">Apply Scores to Rubric</button>
     </div>
   `;
+}
+
+async function loadPublishedDataset() {
+  try {
+    const response = await fetch("data/dataset.json", { cache: "no-store" });
+    if (!response.ok) return;
+    const dataset = await response.json();
+    const entries = Array.isArray(dataset) ? dataset : dataset.videos || [];
+    const results = entries.map((entry, index) => normalizeDatasetEntry(entry, index));
+    if (!results.length) return;
+    state.cases = results;
+    state.selectedCaseId = results[0].videoId;
+    state.current = results[0];
+    state.scores = { ...results[0].scores };
+    state.batchItems = results.map((result, index) => ({
+      id: `published-${index}`,
+      videoId: result.videoId,
+      videoSrc: result.videoSrc,
+      model: result.model,
+      category: result.category,
+      prompt: result.prompt,
+      status: "done",
+      score: result.normalizedScore,
+      result
+    }));
+    syncRubricFromScores();
+    renderResult(results[0]);
+    renderCaseTable();
+    renderBatchTable();
+    renderComparison();
+    updateStats();
+  } catch (error) {
+    console.info("No published dataset found yet.");
+  }
+}
+
+function normalizeDatasetEntry(entry, index) {
+  const scores = entry.scores || {
+    subject: Number(entry.subject_score ?? 3.5),
+    attribute: Number(entry.attribute_score ?? 3.5),
+    action: Number(entry.action_score ?? 3.5),
+    relation: Number(entry.relation_score ?? 3.5),
+    scene: Number(entry.scene_score ?? 3.5),
+    temporal: Number(entry.temporal_score ?? 3.5)
+  };
+  const evidence = {
+    ...demoEvidence(),
+    ...(entry.evidence || {}),
+    keyframes: entry.keyframes || entry.evidence?.keyframes || []
+  };
+  return buildResultFromData({
+    videoId: entry.video_id || entry.videoId || `V${String(index + 1).padStart(3, "0")}`,
+    model: entry.model || "Unknown",
+    category: entry.category || "主体",
+    evaluator: entry.evaluator || "Published",
+    prompt: entry.prompt || "",
+    parsed: parsePrompt(entry.prompt || ""),
+    evidence,
+    scores,
+    labels: entry.error_type || entry.labels,
+    normalizedScore: Number(entry.final_score ?? entry.normalizedScore ?? weightedScore(scores)),
+    videoSrc: entry.video || entry.videoSrc || "",
+    fileName: entry.fileName || "",
+    reason: entry.reason || "",
+    createdAt: entry.createdAt || "Published Dataset"
+  });
 }
 
 function updateStats() {
@@ -621,6 +994,7 @@ function loadDemo() {
   state.cases.unshift(result);
   renderResult(result);
   renderCaseTable();
+  renderComparison();
   updateStats();
   location.hash = "#results";
 }
@@ -733,6 +1107,33 @@ function exportCSV() {
   const rows = state.cases.map((item) => [item.videoId, item.model, item.category, item.prompt, item.normalizedScore, item.labels.join("; "), item.reason]);
   const csv = [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
   download(`t2v-evaluation-${Date.now()}.csv`, csv, "text/csv");
+}
+
+function exportPublishedDataset() {
+  if (!state.cases.length) return alert("还没有可导出的评测记录。请先完成批量评测。");
+  const videos = state.cases
+    .slice()
+    .reverse()
+    .map((item) => ({
+      video_id: item.videoId,
+      model: item.model,
+      category: item.category,
+      prompt: item.prompt,
+      video: item.videoSrc?.startsWith("blob:") ? `videos/${item.fileName || `${item.videoId}.mp4`}` : item.videoSrc,
+      subject_score: item.scores.subject,
+      attribute_score: item.scores.attribute,
+      action_score: item.scores.action,
+      relation_score: item.scores.relation,
+      scene_score: item.scores.scene,
+      temporal_score: item.scores.temporal,
+      final_score: item.normalizedScore,
+      error_type: item.labels,
+      reason: item.reason
+    }));
+  download("dataset.json", JSON.stringify({
+    description: "Published T2V two-model comparison dataset. Put referenced video files under videos/.",
+    videos
+  }, null, 2), "application/json");
 }
 
 function download(filename, content, type) {

@@ -17,6 +17,7 @@
       </a>
       <nav>
         <a href="#dashboard">Dashboard</a>
+        <a href="#batch">Batch Compare</a>
         <a href="#evaluation">Evaluation Module</a>
         <a href="#review">Case Review</a>
         <a href="#results">Results</a>
@@ -55,6 +56,95 @@
             <small>diagnostic labels</small>
           </article>
         </div>
+      </section>
+
+      <section id="batch" class="page-section">
+        <div class="section-head">
+          <div>
+            <p>BATCH COMPARE</p>
+            <h2>两个模型批量对比</h2>
+          </div>
+          <div class="button-row">
+            <button class="ghost-button" id="load-public-dataset" type="button">Load Published Dataset</button>
+            <button class="ghost-button" id="export-public-dataset" type="button">Export Published Dataset</button>
+            <button class="primary-button" id="run-batch" type="button">Run Batch Evaluation</button>
+          </div>
+        </div>
+
+        <div class="batch-grid">
+          <section class="panel batch-input-panel">
+            <label class="file-drop">
+              <input id="batch-video-input" type="file" accept="video/*" multiple>
+              <span>一次上传 30 条视频</span>
+              <small>默认前一半归为模型 A，后一半归为模型 B；导入后可在队列表格里逐条修改模型、类别和 Prompt。</small>
+            </label>
+
+            <div class="field-grid">
+              <label>
+                <span>Model A</span>
+                <input id="batch-model-a" type="text" value="Model A" placeholder="例如 Pika-1.0">
+              </label>
+              <label>
+                <span>Model B</span>
+                <input id="batch-model-b" type="text" value="Model B" placeholder="例如 Kling-1.0">
+              </label>
+              <label>
+                <span>Default Category</span>
+                <select id="batch-category">
+                  <option>主体</option>
+                  <option>属性</option>
+                  <option>动作</option>
+                  <option>关系</option>
+                  <option>场景</option>
+                  <option>时序</option>
+                </select>
+              </label>
+              <label>
+                <span>Default Prompt</span>
+                <input id="batch-prompt" type="text" placeholder="可先填一个默认 prompt，再逐条修改">
+              </label>
+            </div>
+
+            <div class="batch-note">
+              <strong>公开展示方式</strong>
+              <span>如果希望别人打开网页就看到视频和评测结果，请把视频放到仓库的 <b>videos/</b> 文件夹，并把评分结果写入 <b>data/dataset.json</b>。本页面会自动读取。</span>
+            </div>
+          </section>
+
+          <section class="panel comparison-panel">
+            <div class="comparison-summary" id="comparison-summary">
+              <article><span>Model A Avg</span><strong>--</strong></article>
+              <article><span>Model B Avg</span><strong>--</strong></article>
+              <article><span>Winner</span><strong>--</strong></article>
+            </div>
+            <div class="comparison-bars" id="comparison-bars"></div>
+          </section>
+        </div>
+
+        <section class="panel batch-queue-panel">
+          <div class="case-browser-head">
+            <strong>Batch Queue</strong>
+            <span id="batch-count">0 videos</span>
+          </div>
+          <div class="batch-table-wrap">
+            <table class="batch-table">
+              <thead>
+                <tr>
+                  <th>Video ID</th>
+                  <th>Preview</th>
+                  <th>Model</th>
+                  <th>Category</th>
+                  <th>Prompt</th>
+                  <th>Status</th>
+                  <th>Score</th>
+                </tr>
+              </thead>
+              <tbody id="batch-table">
+                <tr><td colspan="7" class="empty-row">还没有批量视频。请选择 30 条视频开始。</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
       </section>
 
       <section id="evaluation" class="page-section">
