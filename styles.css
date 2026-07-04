@@ -488,6 +488,37 @@ video {
   line-height: 1.7;
 }
 
+.parse-section + .parse-section {
+  margin-top: 12px;
+}
+
+.parse-section span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.parse-section p {
+  margin: 0;
+}
+
+.parse-section pre {
+  max-height: 260px;
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  color: #0f172a;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .subhead {
   margin-top: 8px;
 }
