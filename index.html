@@ -131,6 +131,41 @@
         </div>
       </section>
 
+      <section id="review" class="page-section">
+        <div class="section-head">
+          <div>
+            <p>CASE REVIEW</p>
+            <h2>选择一个样本进行复核</h2>
+          </div>
+          <div class="case-tools">
+            <input class="search" id="case-search" type="search" placeholder="video_id, model, prompt, label...">
+            <select id="case-category">
+              <option value="all">全部类别</option>
+              <option>主体</option>
+              <option>属性</option>
+              <option>动作</option>
+              <option>关系</option>
+              <option>场景</option>
+              <option>时序</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="case-review-grid">
+          <section class="panel case-browser">
+            <div class="case-browser-head">
+              <strong>Sample List</strong>
+              <span id="case-count">0 cases</span>
+            </div>
+            <div class="case-list" id="case-list"></div>
+          </section>
+
+          <section class="panel case-detail" id="case-detail">
+            <div class="empty-detail">选择左侧样本查看复核详情。</div>
+          </section>
+        </div>
+      </section>
+
       <section id="results" class="page-section">
         <div class="section-head">
           <div>
@@ -215,41 +250,6 @@
         <section class="comparison-pair-list" id="comparison-pair-list">
           <article class="panel empty-detail">正在读取 Excel 评分结果与视频...</article>
         </section>
-      </section>
-
-      <section id="review" class="page-section">
-        <div class="section-head">
-          <div>
-            <p>CASE REVIEW</p>
-            <h2>选择一个样本进行复核</h2>
-          </div>
-          <div class="case-tools">
-            <input class="search" id="case-search" type="search" placeholder="video_id, model, prompt, label...">
-            <select id="case-category">
-              <option value="all">全部类别</option>
-              <option>主体</option>
-              <option>属性</option>
-              <option>动作</option>
-              <option>关系</option>
-              <option>场景</option>
-              <option>时序</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="case-review-grid">
-          <section class="panel case-browser">
-            <div class="case-browser-head">
-              <strong>Sample List</strong>
-              <span id="case-count">0 cases</span>
-            </div>
-            <div class="case-list" id="case-list"></div>
-          </section>
-
-          <section class="panel case-detail" id="case-detail">
-            <div class="empty-detail">选择左侧样本查看复核详情。</div>
-          </section>
-        </div>
       </section>
 
       <section id="method" class="page-section">
