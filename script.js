@@ -601,7 +601,7 @@ function updateStats() {
 function loadDemo() {
   $("#video-id").value = "V001";
   $("#model-name").value = "Kling-1.0";
-  $("#category").value = "Spatial Relationships";
+  $("#category").value = "关系";
   $("#evaluator").value = "Guest";
   $("#prompt").value = "A dog running on the left of a bicycle in a sunny park";
   const parsed = parsePrompt($("#prompt").value);
@@ -630,7 +630,7 @@ function seedCases() {
     {
       videoId: "V001",
       model: "Pika-1.0",
-      category: "Consistent Attribute Binding",
+      category: "属性",
       prompt: "A blue car drives past a white picket fence on a sunny day",
       scores: { subject: 5, attribute: 5, action: 5, relation: 5, scene: 5, temporal: 5 },
       labels: ["No Obvious Error"],
@@ -639,7 +639,7 @@ function seedCases() {
     {
       videoId: "V003",
       model: "Pika-1.0",
-      category: "Action Binding",
+      category: "动作",
       prompt: "A dog runs through a field while a cat climbs a tree",
       scores: { subject: 4.2, attribute: 4.1, action: 3.1, relation: 3.0, scene: 4.4, temporal: 3.2 },
       labels: ["Action Missing", "Relation Error", "Temporal Drift", "Insufficient Information"],
@@ -648,7 +648,7 @@ function seedCases() {
     {
       videoId: "V006",
       model: "Kling-1.0",
-      category: "Spatial Relationships",
+      category: "关系",
       prompt: "A dog running on the left of a bicycle",
       scores: { subject: 4.8, attribute: 4.4, action: 4.6, relation: 3.1, scene: 4.5, temporal: 4.2 },
       labels: ["Relation Error"],
@@ -657,7 +657,7 @@ function seedCases() {
     {
       videoId: "V013",
       model: "Pika-1.0",
-      category: "Consistent Attribute Binding",
+      category: "属性",
       prompt: "Red toaster toasting bread beside a white refrigerator",
       scores: { subject: 2.8, attribute: 2.4, action: 2.6, relation: 2.5, scene: 3.2, temporal: 2.8 },
       labels: ["Subject Missing", "Attribute Error", "Action Missing", "Relation Error"],
@@ -666,7 +666,7 @@ function seedCases() {
     {
       videoId: "V018",
       model: "Kling-1.0",
-      category: "Spatial Relationships",
+      category: "关系",
       prompt: "A bird flying on the left side of a hot air balloon",
       scores: { subject: 5, attribute: 4.8, action: 5, relation: 5, scene: 4.9, temporal: 4.8 },
       labels: ["No Obvious Error"],
@@ -675,7 +675,7 @@ function seedCases() {
     {
       videoId: "V045",
       model: "Pika-1.0",
-      category: "Action Binding",
+      category: "动作",
       prompt: "A snail crosses the path as a butterfly flutters above",
       scores: { subject: 2.6, attribute: 3.4, action: 1.8, relation: 2.4, scene: 3.5, temporal: 2.1 },
       labels: ["Subject Missing", "Action Missing", "Relation Error", "Temporal Drift"],
