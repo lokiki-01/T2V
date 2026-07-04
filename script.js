@@ -37,11 +37,96 @@ function init() {
   if (state.current) {
     renderResult(state.current);
   }
+  loadModelComparison();
   renderBars();
   drawRadar(state.scores);
   bindEvents();
   renderCaseTable();
   updateStats();
+}
+
+async function loadModelComparison() {
+  try {
+    const response = await fetch("data/model-comparison.json", { cache: "no-store" });
+    if (!response.ok) throw new Error("comparison data missing");
+    const data = await response.json();
+    renderModelComparison(data);
+  } catch (error) {
+    $("#comparison-source").textContent = "No comparison data found.";
+    $("#comparison-pair-list").innerHTML = `<article class="panel empty-detail">还没有模型对比数据。</article>`;
+  }
+}
+
+function renderModelComparison(data) {
+  const seedance = data.summary["seedance2.0"];
+  const kling = data.summary["kling3.0"];
+  const videosById = Object.fromEntries(data.videos.map((item) => [item.video_id, item]));
+
+  $("#comparison-source").textContent = `${data.source} · ${data.videos.length} videos`;
+  $("#model-comparison-overview").innerHTML = `
+    <article class="panel"><span>Seedance 2.0 Average</span><strong>${seedance.average_final_score.toFixed(1)}</strong></article>
+    <article class="panel"><span>Kling 3.0 Average</span><strong>${kling.average_final_score.toFixed(1)}</strong></article>
+    <article class="panel"><span>Total Videos</span><strong>${data.videos.length}</strong></article>
+    <article class="panel"><span>Prompt Pairs</span><strong>${data.pairs.length}</strong></article>
+  `;
+
+  const dimRows = [
+    ["主体", "average_subject"],
+    ["属性", "average_attribute"],
+    ["动作", "average_action"],
+    ["关系", "average_relation"],
+    ["场景", "average_scene"],
+    ["时序", "average_temporal"]
+  ];
+  $("#model-dimension-bars").innerHTML = dimRows.map(([label, key]) => `
+    <div class="model-dim-row">
+      <span>${label}</span>
+      <div class="model-dim-bar"><span>Seedance 2.0</span><i><em style="width:${(seedance[key] / 5) * 100}%"></em></i><b>${seedance[key].toFixed(2)}</b></div>
+      <div class="model-dim-bar kling"><span>Kling 3.0</span><i><em style="width:${(kling[key] / 5) * 100}%"></em></i><b>${kling[key].toFixed(2)}</b></div>
+    </div>
+  `).join("");
+
+  $("#comparison-pair-list").innerHTML = data.pairs.map((pair) => {
+    const left = videosById[pair.seedance_video_id];
+    const right = videosById[pair.kling_video_id];
+    return `
+      <article class="panel pair-card">
+        <div class="pair-head">
+          <div>
+            <h3>${escapeHTML(pair.prompt_id)} · ${escapeHTML(pair.category)}</h3>
+            <p>${escapeHTML(pair.prompt)}</p>
+          </div>
+          <span class="winner-pill">Winner: ${escapeHTML(pair.winner)}</span>
+        </div>
+        <div class="pair-videos">
+          ${renderModelVideoCard(left)}
+          ${renderModelVideoCard(right)}
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderModelVideoCard(item) {
+  return `
+    <section class="model-video-card">
+      <header>
+        <h4>${escapeHTML(item.model)} · ${escapeHTML(item.video_id)}</h4>
+        <strong class="${scoreClass(item.final_score)}">${item.final_score.toFixed(1)}</strong>
+      </header>
+      <video src="${escapeHTML(item.video)}" controls preload="metadata" playsinline></video>
+      <div class="score-grid">
+        <span>主体 <b>${item.subject_score}</b></span>
+        <span>属性 <b>${item.attribute_score}</b></span>
+        <span>动作 <b>${item.action_score}</b></span>
+        <span>关系 <b>${item.relation_score}</b></span>
+        <span>场景 <b>${item.scene_score}</b></span>
+        <span>时序 <b>${item.temporal_score}</b></span>
+      </div>
+      <div class="label-list">${item.error_type.length ? item.error_type.map((label) => `<span class="chip warn">${escapeHTML(label)}</span>`).join("") : `<span class="chip">No Obvious Error</span>`}</div>
+      <p class="reason-text">${escapeHTML(item.reason)}</p>
+    </section>
+  `;
 }
 
 function bindEvents() {
