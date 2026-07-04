@@ -771,7 +771,22 @@ input[type="range"] {
 }
 
 .method-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 980px;
+}
+
+.method-grid .panel {
+  min-height: 150px;
+  padding: 26px;
+}
+
+.method-grid h3 {
+  margin-bottom: 14px;
+  font-size: 22px;
+}
+
+.method-grid p {
+  line-height: 1.8;
 }
 
 @media (max-width: 1180px) {
