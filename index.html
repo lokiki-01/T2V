@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AIGC Video Semantic Consistency Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <aside class="sidebar">
+      <a class="brand" href="#dashboard">
+        <span class="brand-icon">A</span>
+        <span>
+          <b>AIGC Video Evaluation</b>
+          <small>Semantic Consistency Dashboard</small>
+        </span>
+      </a>
+      <nav>
+        <a href="#dashboard">Dashboard</a>
+        <a href="#evaluation">Evaluation Module</a>
+        <a href="#review">Case Review</a>
+        <a href="#results">Results</a>
+        <a href="#method">Method / About</a>
+      </nav>
+      <div class="mode-pill">Guest Mode</div>
+    </aside>
+
+    <main class="app">
+      <section id="dashboard" class="page-section">
+        <div class="page-title">
+          <p>DASHBOARD</p>
+          <h1>AIGC 视频语义一致性评测总览</h1>
+          <span>上传视频、输入生成提示词，获得六维语义一致性评分、诊断标签与可导出的评测报告。</span>
+        </div>
+
+        <div class="stat-grid">
+          <article>
+            <span>Total Videos</span>
+            <strong id="stat-total">0</strong>
+            <small>current session</small>
+          </article>
+          <article>
+            <span>Average Score</span>
+            <strong id="stat-average">--</strong>
+            <small>/ 100</small>
+          </article>
+          <article>
+            <span>Lowest Dimension</span>
+            <strong id="stat-lowest">--</strong>
+            <small>six-dimension mean</small>
+          </article>
+          <article>
+            <span>Most Frequent Issue</span>
+            <strong id="stat-issue">--</strong>
+            <small>diagnostic labels</small>
+          </article>
+        </div>
+      </section>
+
+      <section id="evaluation" class="page-section">
+        <div class="section-head">
+          <div>
+            <p>EVALUATION MODULE</p>
+            <h2>单视频评测</h2>
+          </div>
+          <button class="ghost-button" id="load-demo" type="button">Load Demo Case</button>
+        </div>
+
+        <div class="evaluation-grid">
+          <form class="panel input-panel" id="eval-form">
+            <label class="file-drop">
+              <input id="video-input" type="file" accept="video/*">
+              <span>选择视频文件</span>
+              <small>支持浏览器可播放的 MP4 / WebM / MOV。视频只在本地浏览器分析，不会上传。</small>
+            </label>
+
+            <div class="field-grid">
+              <label>
+                <span>Video ID</span>
+                <input id="video-id" type="text" placeholder="V001" value="V001">
+              </label>
+              <label>
+                <span>Generation Model</span>
+                <input id="model-name" type="text" placeholder="Pika-1.0 / Kling / Sora">
+              </label>
+              <label>
+                <span>Task Category</span>
+                <select id="category">
+                  <option>Consistent Attribute Binding</option>
+                  <option>Dynamic Attribute Binding</option>
+                  <option>Spatial Relationships</option>
+                  <option>Motion Binding</option>
+                  <option>Action Binding</option>
+                  <option>Object Interactions</option>
+                  <option>Generative Numeracy</option>
+                </select>
+              </label>
+              <label>
+                <span>Evaluator</span>
+                <input id="evaluator" type="text" placeholder="姓名 / 小组">
+              </label>
+            </div>
+
+            <label>
+              <span>Text Prompt</span>
+              <textarea id="prompt" rows="4" placeholder="例如：A blue car drives past a white picket fence on a sunny day."></textarea>
+            </label>
+
+            <button class="primary-button" type="submit">Start Evaluation</button>
+          </form>
+
+          <section class="panel preview-panel">
+            <div class="video-shell">
+              <video id="video-preview" controls playsinline></video>
+              <div class="empty-video" id="empty-video">等待上传视频</div>
+            </div>
+            <div class="meta-grid">
+              <span>Duration <b id="meta-duration">--</b></span>
+              <span>Resolution <b id="meta-resolution">--</b></span>
+              <span>Frame Samples <b id="meta-samples">0</b></span>
+              <span>File Size <b id="meta-size">--</b></span>
+            </div>
+            <div class="keyframe-section">
+              <div class="keyframe-head">
+                <h3>Key Frames</h3>
+                <span id="keyframe-status">上传视频后自动截取 8 帧</span>
+              </div>
+              <div class="keyframe-grid" id="keyframe-grid"></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="results" class="page-section">
+        <div class="section-head">
+          <div>
+            <p>RESULTS</p>
+            <h2>评分结果</h2>
+          </div>
+          <div class="button-row">
+            <button class="ghost-button" id="export-json" type="button">Export JSON</button>
+            <button class="ghost-button" id="export-csv" type="button">Export CSV</button>
+          </div>
+        </div>
+
+        <div class="result-grid">
+          <section class="panel score-card">
+            <span>Normalized Score</span>
+            <strong id="total-score">--</strong>
+            <small id="score-note">运行评测后生成综合分</small>
+          </section>
+
+          <section class="panel">
+            <h3>Six-Dimension Radar</h3>
+            <svg id="radar" viewBox="0 0 260 220" role="img" aria-label="六维雷达图"></svg>
+          </section>
+
+          <section class="panel">
+            <h3>Dimension Scores</h3>
+            <div class="bar-list" id="dimension-bars"></div>
+          </section>
+
+          <section class="panel">
+            <h3>Diagnostic Labels</h3>
+            <div class="label-list" id="diagnostic-labels">
+              <span class="muted">暂无诊断标签</span>
+            </div>
+            <h3 class="subhead">Prompt Parsing</h3>
+            <div class="parse-box" id="prompt-parse">等待输入 prompt</div>
+          </section>
+        </div>
+
+        <section class="panel manual-panel">
+          <div>
+            <h3>Human Review Adjustment</h3>
+            <p>自动分析只能提供视频技术证据与 prompt 结构解析；语义一致性最终分建议由评测者根据视频内容手动复核。</p>
+          </div>
+          <div class="rubric-grid" id="rubric-grid"></div>
+        </section>
+      </section>
+
+      <section id="review" class="page-section">
+        <div class="section-head">
+          <div>
+            <p>CASE REVIEW</p>
+            <h2>选择一个样本进行复核</h2>
+          </div>
+          <div class="case-tools">
+            <input class="search" id="case-search" type="search" placeholder="video_id, model, prompt, label...">
+            <select id="case-category">
+              <option value="all">All Categories</option>
+              <option>Consistent Attribute Binding</option>
+              <option>Spatial Relationships</option>
+              <option>Action Binding</option>
+              <option>Motion Binding</option>
+              <option>Object Interactions</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="case-review-grid">
+          <section class="panel case-browser">
+            <div class="case-browser-head">
+              <strong>Sample List</strong>
+              <span id="case-count">0 cases</span>
+            </div>
+            <div class="case-list" id="case-list"></div>
+          </section>
+
+          <section class="panel case-detail" id="case-detail">
+            <div class="empty-detail">选择左侧样本查看复核详情。</div>
+          </section>
+        </div>
+      </section>
+
+      <section id="method" class="page-section">
+        <div class="section-head">
+          <div>
+            <p>METHOD / ABOUT</p>
+            <h2>评测方法</h2>
+          </div>
+        </div>
+
+        <div class="method-grid">
+          <article class="panel">
+            <h3>六维指标</h3>
+            <p>主体、属性、动作、关系、场景、时序，每项 0-5 分，综合分归一到 100 分。</p>
+          </article>
+          <article class="panel">
+            <h3>浏览器端证据</h3>
+            <p>从视频中采样关键帧，估计亮度、对比度、清晰度和帧间运动变化，辅助判断视频是否可评。</p>
+          </article>
+          <article class="panel">
+            <h3>语义复核</h3>
+            <p>主体缺失、属性错误、动作缺失、关系错误、场景偏离、时序漂移等标签由系统建议，评测者可按视频内容修正分数。</p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <canvas id="analysis-canvas" width="192" height="108" hidden></canvas>
+    <script src="script.js"></script>
+  </body>
+</html>
